@@ -22,11 +22,11 @@ async def create_breeder(
     Create a new breeder.
     Requires authentication.
     """
-    # Check if breeder_code already exists
-    if BreederCRUD.breeder_exists_by_code(db, breeder_data.breeder_code):
+    # Check if breeder_code already exists for the organization
+    if BreederCRUD.get_breeder_by_code_and_org(db, breeder_data.breeder_code, breeder_data.organization_id):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Breeder code already exists"
+            detail="Breeder code already exists for this organization"
         )
 
     breeder = BreederCRUD.create_breeder(db, breeder_data)

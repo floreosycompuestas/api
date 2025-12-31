@@ -1,6 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
-from sqlalchemy.ext.declarative import declarative_base
-from datetime import datetime
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, func
 from api.app.database.base import Base
 
 
@@ -15,7 +13,7 @@ class Bird(Base):
     father_id = Column(Integer, ForeignKey("bird.id"), nullable=True)
     mother_id = Column(Integer, ForeignKey("bird.id"), nullable=True)
     breeder_id = Column(Integer, ForeignKey("breeder.id"), nullable=True)
-    owner_id = Column(Integer, ForeignKey("breeder.id"), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    owner_id = Column(Integer, ForeignKey("owner.id"), nullable=True)
+    created_at = Column(DateTime, default=func.now(), nullable=False)
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
 

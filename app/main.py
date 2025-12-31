@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, Any, Union
 from sqlalchemy import text
 
-from api.app.routers import users, auth, bird, breeder, role
+from api.app.routers import users, auth, bird, breeder, role, organization, owner, pairs
 from api.app.internal import admin
 from api.app.core.config import settings
 from api.app.dependencies import get_db
@@ -27,6 +27,9 @@ app.include_router(users.router)
 app.include_router(bird.router)
 app.include_router(breeder.router)
 app.include_router(role.router)
+app.include_router(organization.router)
+app.include_router(owner.router)
+app.include_router(pairs.router)
 app.include_router(admin.router)
 
 @app.get("/")

@@ -28,11 +28,14 @@ class BreederCRUD:
             Created Breeder object or None if creation fails (e.g., duplicate breeder_code)
 
         Raises:
-            IntegrityError: If breeder_code already exists
+            IntegrityError: If breeder_code already exists for the organization
         """
         try:
             db_breeder = Breeder(
                 breeder_code=breeder_data.breeder_code,
+                organization_id=breeder_data.organization_id,
+                user_id=breeder_data.user_id,
+                owner_id=breeder_data.owner_id,
                 first_name=breeder_data.first_name,
                 last_name=breeder_data.last_name,
             )
@@ -71,6 +74,23 @@ class BreederCRUD:
             Breeder object or None if not found
         """
         return db.query(Breeder).filter(Breeder.breeder_code == breeder_code).first()
+
+    @staticmethod
+    def get_breeder_by_code_and_org(db: Session, breeder_code: str, organization_id: int) -> Optional[Breeder]:
+        """
+        Retrieve a breeder by breeder code and organization ID (composite unique key).
+
+        Args:
+            db: Database session
+            breeder_code: Breeder code
+            organization_id: Organization ID
+
+        Returns:
+            Breeder object or None if not found
+        """
+        return db.query(Breeder).filter(
+            (Breeder.breeder_code == breeder_code) & (Breeder.organization_id == organization_id)
+        ).first()
 
     @staticmethod
     def get_all_breeders(db: Session, skip: int = 0, limit: int = 100) -> List[Breeder]:
@@ -124,11 +144,11 @@ class BreederCRUD:
             return None
 
         # Update fields if provided
-        update_data = breeder_data.dict(exclude_unset=True)
+        update_data = breeder_data.model_dump(exclude_unset=True)
         for field, value in update_data.items():
             setattr(db_breeder, field, value)
 
-        db_breeder.updated_at = datetime.utcnow()
+        db_breeder.updated_at = datetime.now()
 
         try:
             db.commit()
