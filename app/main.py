@@ -15,7 +15,7 @@ app: FastAPI = FastAPI(title=settings.TITLE, description=settings.DESCRIPTION, v
 allowed_origins = settings.ALLOWED_HOSTS.split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Frontend URL
+    allow_origins=["*"],  # Frontend URL "http://localhost:3000"
     allow_credentials=True,  # ✅ Allow cookies
     allow_methods=["*"],
     allow_headers=["*"],
