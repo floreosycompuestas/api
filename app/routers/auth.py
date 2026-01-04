@@ -1,7 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import Response
 from fastapi.requests import Request
+from fastapi.responses import Response
 from sqlmodel import Session
 
 from api.app.core.security import (
@@ -12,7 +11,7 @@ from api.app.core.security import (
     revoke_token,
 )
 from api.app.core.config import settings
-from api.app.schemas.auth import TokenResponse, TokenData, LoginRequest
+from api.app.schemas.auth import TokenResponse, TokenData, LoginRequest, UserInfoResponse
 from api.app.dependencies import get_db, get_current_user
 from api.app.crud.user_crud import UserCRUD
 
@@ -164,45 +163,59 @@ async def refresh_token(request: Request):
 
 
 @router.post("/logout")
-async def logout(request: Request, current_user: TokenData = Depends(get_current_user)):
+async def logout(request: Request):
     """
-    Logout endpoint. Revokes the current access token and clears cookies.
+    Logout endpoint. Revokes both access and refresh tokens (if present) and clears cookies.
+    Works even if user is not authenticated or tokens are expired.
     """
-    token = request.cookies.get("access_token")
+    access_token = request.cookies.get("access_token")
+    refresh_token = request.cookies.get("refresh_token")
 
-    if token:
-        revoke_token(token)
+    # Revoke both tokens if present; ignore errors to avoid failing logout
+    for token in (access_token, refresh_token):
+        if token:
+            try:
+                revoke_token(token)
+            except Exception:
+                # Don't fail logout if token revocation fails
+                pass
 
-    response = Response(content='{"message": "Successfully logged out"}', status_code=status.HTTP_200_OK)
-    response.headers["content-type"] = "application/json"
+    response = Response(
+        content='{"message": "Successfully logged out"}',
+        status_code=status.HTTP_200_OK,
+        media_type="application/json"
+    )
 
-    # Clear both cookies
+    # Clear both cookies using only supported delete_cookie parameters
     response.delete_cookie(
         key="access_token",
+        path="/",
         domain=settings.COOKIE_DOMAIN,
         secure=settings.SECURE_COOKIE,
+        httponly=True,
         samesite=settings.COOKIE_SAMESITE,
     )
     response.delete_cookie(
         key="refresh_token",
+        path="/",
         domain=settings.COOKIE_DOMAIN,
         secure=settings.SECURE_COOKIE,
+        httponly=True,
         samesite=settings.COOKIE_SAMESITE,
     )
 
     return response
 
 
-@router.get("/me")
+@router.get("/me", response_model=UserInfoResponse)
 async def get_current_user_info(current_user: TokenData = Depends(get_current_user)):
     """
     Get current authenticated user information.
-    Returns 200 if user is authenticated, otherwise returns 401.
-    Used by frontend to check if user is logged in.
+    Returns 200 with user details if authenticated, otherwise returns 401.
+    Used by frontend to verify authentication status and get user data.
     """
     return {
         "user_id": current_user.user_id,
         "email": current_user.sub,
-        "authenticated": True,
     }
 

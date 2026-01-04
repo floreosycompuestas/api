@@ -21,6 +21,12 @@ class TokenData(BaseModel):
     sub: str
 
 
+class UserInfoResponse(BaseModel):
+    """Response for GET /me endpoint - current authenticated user information"""
+    user_id: int
+    email: str
+
+
 class LoginRequest(BaseModel):
     """Custom login request - accepts either email or username."""
     username_or_email: str = Field(..., description="Username or email address")
