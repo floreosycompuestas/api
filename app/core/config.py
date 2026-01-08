@@ -49,8 +49,9 @@ class Settings(BaseSettings):
     # Redis Configuration
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
-    REDIS_PASSWORD: str = "Pass123"
+    REDIS_PASSWORD: Optional[str] = None  # Optional, required for standalone but not cluster
     REDIS_DB: int = 0
+    REDIS_CLUSTER_ENABLED: bool = False  # Set to True if using Redis Cluster
 
     @property
     def DATABASE_URL(self) -> str:

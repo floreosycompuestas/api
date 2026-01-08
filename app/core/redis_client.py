@@ -1,33 +1,66 @@
 """
 Redis client for managing token revocation and caching.
+Supports both standalone Redis and Redis Cluster.
 """
 
 import redis
-from typing import Optional
+from redis.cluster import RedisCluster
+from typing import Optional, Union
 from api.app.core.config import settings
 
 
 class RedisClient:
     """Redis client for token management and caching."""
 
-    _instance: Optional[redis.Redis] = None
+    _instance: Optional[Union[redis.Redis, RedisCluster]] = None
+    _is_cluster: bool = False
 
     @classmethod
-    def get_client(cls) -> redis.Redis:
+    def get_client(cls) -> Union[redis.Redis, RedisCluster]:
         """
         Get or create Redis client instance (singleton pattern).
+        Automatically detects and connects to Redis Cluster or standalone instance.
 
         Returns:
-            Redis client instance
+            Redis client instance (Redis or RedisCluster)
         """
         if cls._instance is None:
-            cls._instance = redis.from_url(
-                settings.REDIS_URL,
-                decode_responses=True,
-                socket_connect_timeout=5,
-                socket_keepalive=True,
-                health_check_interval=30
-            )
+            try:
+                # Check if connecting to a Redis Cluster
+                if settings.REDIS_CLUSTER_ENABLED:
+                    # Cluster mode - password is typically not used
+                    cluster_kwargs = {
+                        "host": settings.REDIS_HOST,
+                        "port": settings.REDIS_PORT,
+                        "decode_responses": True,
+                        "socket_connect_timeout": 5,
+                        "socket_keepalive": True,
+                        "skip_full_coverage_check": True,  # For partial cluster coverage
+                    }
+                    # Only add password if provided
+                    if settings.REDIS_PASSWORD:
+                        cluster_kwargs["password"] = settings.REDIS_PASSWORD
+
+                    cls._instance = RedisCluster(**cluster_kwargs)
+                    cls._is_cluster = True
+                else:
+                    cls._instance = redis.from_url(
+                        settings.REDIS_URL,
+                        decode_responses=True,
+                        socket_connect_timeout=5,
+                        socket_keepalive=True,
+                        health_check_interval=30
+                    )
+            except redis.cluster.RedisClusterException:
+                # Fall back to standalone Redis if cluster connection fails
+                print("Failed to connect to Redis Cluster, falling back to standalone Redis")
+                cls._instance = redis.from_url(
+                    settings.REDIS_URL,
+                    decode_responses=True,
+                    socket_connect_timeout=5,
+                    socket_keepalive=True,
+                    health_check_interval=30
+                )
         return cls._instance
 
     @classmethod
