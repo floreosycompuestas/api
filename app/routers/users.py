@@ -3,8 +3,11 @@ from sqlmodel import Session
 
 from api.app.schemas.auth import TokenData
 from api.app.schemas.user import UserCreate
+from api.app.schemas.breeder import BreederCreate
 from api.app.dependencies import get_current_user, get_db
 from api.app.crud.user_crud import UserCRUD
+from api.app.crud.breeder_crud import BreederCRUD
+from api.app.crud.organization_crud import OrganizationCRUD
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -35,6 +38,35 @@ async def register_user(user_data: UserCreate, db: Session = Depends(get_db)):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Could not create user"
         )
+
+    # Create a default breeder for the user
+    # First, get or create a default organization for the user
+    default_org = OrganizationCRUD.get_default_organization(db)
+    if not default_org:
+        # If no default organization exists, create one
+        from api.app.schemas.organization import OrganizationCreate
+        org_data = OrganizationCreate(
+            organization_code="DEFAULT",
+            organization_name="Default Organization",
+            organization_alias="DEF"
+        )
+        default_org = OrganizationCRUD.create_organization(db, org_data)
+
+    if default_org:
+        # Generate breeder code from username
+        breeder_code = f"BR-{user.username.upper()}"
+
+        breeder_data = BreederCreate(
+            breeder_code=breeder_code,
+            organization_id=default_org.id,
+            user_id=user.id,
+            first_name=user.full_name.split()[0] if user.full_name else user.username,
+            last_name=user.full_name.split()[-1] if user.full_name and len(user.full_name.split()) > 1 else ""
+        )
+        breeder = BreederCRUD.create_breeder(db, breeder_data)
+        if not breeder:
+            # Log warning but don't fail user creation if breeder creation fails
+            print(f"Warning: Could not create default breeder for user {user.id}")
 
     return {
         "id": user.id,

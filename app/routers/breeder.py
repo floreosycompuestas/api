@@ -9,6 +9,7 @@ from sqlmodel import Session
 from api.app.crud.breeder_crud import BreederCRUD
 from api.app.dependencies import get_current_user, get_db
 from api.app.schemas.breeder import BreederCreate, BreederUpdate, BreederResponse
+from api.app.schemas.auth import TokenData
 
 authenticated_router = APIRouter(prefix="/breeders", tags=["breeders"], dependencies=[Depends(get_current_user)])
 
@@ -51,6 +52,74 @@ async def list_breeders(
     """
     breeders = BreederCRUD.get_all_breeders(db, skip=skip, limit=limit)
     return breeders
+
+
+@authenticated_router.get("/me/breeder", response_model=BreederResponse)
+async def get_current_user_breeder(
+    current_user: TokenData = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get the breeder for the currently logged-in user.
+    Requires authentication.
+    """
+    breeder = BreederCRUD.get_breeder_by_user_id(db, current_user.user_id)
+    if not breeder:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Breeder not found for current user"
+        )
+
+    return breeder
+
+
+@authenticated_router.get("/user/{user_id}")
+async def get_breeder_by_user_id(
+    user_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Get a breeder by user ID.
+    Requires authentication.
+    Returns the breeder associated with the given user.
+    """
+    breeder = BreederCRUD.get_breeder_by_user_id(db, user_id)
+    if not breeder:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Breeder not found for this user"
+        )
+
+    return {
+        "id": breeder.id,
+        "breeder_code": breeder.breeder_code,
+        "first_name": breeder.first_name,
+        "last_name": breeder.last_name,
+        "created_at": breeder.created_at,
+        "updated_at": breeder.updated_at
+    }
+
+
+@authenticated_router.get("/by-user/{user_id}/id")
+async def get_breeder_id_by_user_id(
+    user_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Get the breeder ID for a specific user.
+    Requires authentication.
+
+    Returns:
+        JSON object with breeder_id field
+    """
+    breeder = BreederCRUD.get_breeder_by_user_id(db, user_id)
+    if not breeder:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Breeder not found for this user"
+        )
+
+    return {"breeder_id": breeder.id}
 
 
 @authenticated_router.get("/search/{name}", response_model=list[BreederResponse])

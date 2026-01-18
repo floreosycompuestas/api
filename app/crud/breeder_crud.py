@@ -225,3 +225,16 @@ class BreederCRUD:
         """
         return db.query(Breeder).count()
 
+    @staticmethod
+    def get_breeder_by_user_id(db: Session, user_id: int) -> Optional[Breeder]:
+        """
+        Retrieve a breeder by user ID.
+
+        Args:
+            db: Database session
+            user_id: User ID
+
+        Returns:
+            Breeder object or None if not found
+        """
+        return db.query(Breeder).filter(Breeder.user_id == user_id).first()
