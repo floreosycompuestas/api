@@ -6,7 +6,6 @@ Provides CRUD endpoints for bird management.
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session
 
-from api.app.schemas.auth import TokenData
 from api.app.schemas.bird import BirdCreate, BirdUpdate, BirdResponse
 from api.app.dependencies import get_current_user, get_db
 from api.app.crud.bird_crud import BirdCRUD
@@ -21,23 +20,35 @@ async def create_bird(
 ):
     """
     Create a new bird.
+    Uses father_band_id and mother_band_id to resolve parent birds.
+    If parent birds don't exist, they are automatically created with appropriate sex.
+
+    Band ID can be:
+    - Provided directly via band_id field, OR
+    - Auto-generated from breeder_code-bird_year-bird_number
+
     Requires authentication.
     """
-    # Check if band_id already exists
-    if BirdCRUD.bird_exists_by_band_id(db, bird_data.band_id):
+    # Check if band_id already exists (only if provided)
+    if bird_data.band_id and BirdCRUD.bird_exists_by_band_id(db, bird_data.band_id):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Band ID already exists"
         )
 
-    bird = BirdCRUD.create_bird(db, bird_data)
-    if not bird:
+    try:
+        bird = BirdCRUD.create_bird(db, bird_data)
+        if not bird:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Could not create bird"
+            )
+        return bird
+    except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Could not create bird"
+            detail=str(e)
         )
-
-    return bird
 
 
 @authenticated_router.get("/", response_model=list[BirdResponse])
@@ -71,6 +82,34 @@ async def get_bird_stats(
         "males": males,
         "females": females
     }
+
+
+@authenticated_router.get("/breeder/{breeder_id}/{bird_id}", response_model=BirdResponse)
+async def get_bird_by_breeder_and_id(
+    breeder_id: int,
+    bird_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Get a specific bird by breeder ID and bird ID.
+    Ensures the bird belongs to the specified breeder.
+    Requires authentication.
+    """
+    bird = BirdCRUD.get_bird_by_id(db, bird_id)
+    if not bird:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Bird not found"
+        )
+
+    # Verify the bird belongs to the specified breeder
+    if bird.breeder_id != breeder_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Bird does not belong to the specified breeder"
+        )
+
+    return bird
 
 
 @authenticated_router.get("/breeder/{breeder_id}", response_model=list[BirdResponse])
@@ -138,6 +177,68 @@ async def get_bird_by_band(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Bird not found"
+        )
+
+    return bird
+
+
+@authenticated_router.get("/band/{band_id}/sex/{sex}", response_model=BirdResponse)
+async def get_bird_by_band_and_sex(
+    band_id: str,
+    sex: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Get a bird by band ID and sex.
+    Validates that the bird matches both criteria.
+    Requires authentication.
+
+    Example:
+        GET /birds/band/2024-001/sex/M
+    """
+    if sex not in ["M", "F"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Sex must be 'M' or 'F'"
+        )
+
+    bird = BirdCRUD.get_bird_by_band_id(db, band_id)
+    if not bird:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Bird not found"
+        )
+
+    # Verify the bird has the specified sex
+    if bird.sex != sex:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Bird with band ID '{band_id}' is not {sex} (found: {bird.sex})"
+        )
+
+    return bird
+
+
+@authenticated_router.get("/breeder-code/{breeder_code}/band/{band_id}", response_model=BirdResponse)
+async def get_bird_by_breeder_code_and_band(
+    breeder_code: str,
+    band_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Get a bird by breeder code and band ID.
+    This allows retrieving a specific bird using business identifiers
+    instead of database IDs.
+    Requires authentication.
+
+    Example:
+        GET /birds/breeder-code/BR001/band/2024-001
+    """
+    bird = BirdCRUD.get_bird_by_breeder_code_and_band_id(db, breeder_code, band_id)
+    if not bird:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Bird not found for the specified breeder code and band ID"
         )
 
     return bird
