@@ -7,6 +7,8 @@ class Bird(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     band_id = Column(String(100), unique=True, nullable=False, index=True)
+    bird_year = Column(Integer, nullable=True)
+    bird_number = Column(Integer, nullable=True)
     name = Column(String(80), nullable=True)
     dob = Column(DateTime, nullable=True)
     sex = Column(String(1), nullable=True)

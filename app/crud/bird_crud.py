@@ -154,6 +154,8 @@ class BirdCRUD:
 
             db_bird = Bird(
                 band_id=band_id,
+                bird_year=bird_year,
+                bird_number=bird_number,
                 name=bird_data.name,
                 dob=dob,
                 sex=bird_data.sex,
@@ -238,7 +240,8 @@ class BirdCRUD:
     @staticmethod
     def get_birds_by_breeder(db: Session, breeder_id: int, skip: int = 0, limit: int = 100) -> List[Bird]:
         """
-        Retrieve all birds for a specific breeder.
+        Retrieve all birds for a specific breeder, sorted by 4-digit year extracted from band_id.
+        Sorted in descending order (younger birds first).
 
         Args:
             db: Database session
@@ -247,9 +250,28 @@ class BirdCRUD:
             limit: Maximum number of records to return (default: 100)
 
         Returns:
-            List of Bird objects
+            List of Bird objects sorted by year from band_id in descending order
+            (format: breeder_code-YYYY-NN, younger birds first)
         """
-        return db.query(Bird).filter(Bird.breeder_id == breeder_id).offset(skip).limit(limit).all()
+        # Extract year from band_id format: breeder_code-YYYY-NN, so year is second-to-last part
+        birds = db.query(Bird).filter(Bird.breeder_id == breeder_id).all()
+
+        # Sort in Python by extracting year from band_id
+        def extract_year(bird):
+            try:
+                if bird.band_id:
+                    parts = bird.band_id.split('-')
+                    if len(parts) >= 2:
+                        return int(parts[-2])  # Second to last part is the year
+                return 0  # Default for birds without valid band_id format
+            except (ValueError, IndexError):
+                return 0
+
+        # Sort in descending order (reverse=True) so younger birds are listed first
+        birds_sorted = sorted(birds, key=extract_year, reverse=True)
+
+        # Apply pagination after sorting
+        return birds_sorted[skip:skip + limit]
 
     @staticmethod
     def get_birds_by_owner(db: Session, owner_id: int, skip: int = 0, limit: int = 100) -> List[Bird]:

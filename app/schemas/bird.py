@@ -10,6 +10,8 @@ from typing import Optional
 class BirdBase(BaseModel):
     """Base schema for bird data."""
     band_id: str = Field(..., min_length=1, max_length=100, description="Unique band ID")
+    bird_year: Optional[int] = Field(None, description="Bird year from band ID")
+    bird_number: Optional[int] = Field(None, description="Bird number from band ID")
     name: Optional[str] = Field(None, max_length=80, description="Bird name")
     dob: Optional[datetime] = Field(None, description="Date of birth")
     sex: Optional[str] = Field(None, pattern="^[MF]?$", description="Sex (M/F)")
@@ -36,6 +38,8 @@ class BirdCreate(BaseModel):
 class BirdUpdate(BaseModel):
     """Schema for updating a bird."""
     band_id: Optional[str] = Field(None, min_length=1, max_length=100)
+    bird_year: Optional[int] = Field(None, description="Bird year")
+    bird_number: Optional[int] = Field(None, description="Bird number")
     name: Optional[str] = Field(None, max_length=80)
     dob: Optional[datetime] = None
     sex: Optional[str] = Field(None, pattern="^[MF]?$")
