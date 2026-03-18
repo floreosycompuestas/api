@@ -65,6 +65,71 @@ async def list_birds(
     return birds
 
 
+@authenticated_router.get("/search/mine", response_model=list[BirdResponse])
+async def search_my_birds(
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
+    band_id_pattern: str = None,
+    sex: str = None,
+    skip: int = 0,
+    limit: int = 100
+):
+    """
+    Search birds where the current user is the breeder or owner.
+
+    Query parameters:
+    - band_id_pattern: Partial band_id for LIKE search (e.g., 'F01-2025-0' or 'F01-2025-0')
+                      Note: '%' is added automatically at the end if not present
+    - sex: Sex filter ('M' or 'F')
+    - skip: Number of records to skip for pagination (default: 0)
+    - limit: Maximum number of records to return (default: 100)
+
+    Examples:
+    - GET /birds/search/mine?band_id_pattern=F01-2025-0&sex=M
+      Returns male birds with band_id starting with 'F01-2025-0'
+
+    - GET /birds/search/mine?sex=F
+      Returns all female birds where you're breeder or owner
+
+    - GET /birds/search/mine?band_id_pattern=BR001-2024
+      Returns birds with band_id starting with 'BR001-2024'
+
+    Requires authentication.
+    """
+    from api.app.crud.breeder_crud import BreederCRUD
+
+    # Get the breeder associated with the current user
+    breeder = BreederCRUD.get_breeder_by_user_id(db, current_user.user_id)
+    breeder_id = breeder.id if breeder else None
+
+    # For owner_id, we could use the same logic if there's an owner table
+    # For now, assuming breeder is the primary relationship
+    owner_id = None  # You can expand this if needed
+
+    # Add '%' to band_id_pattern if not present for LIKE query
+    if band_id_pattern and not band_id_pattern.endswith('%'):
+        band_id_pattern = band_id_pattern + '%'
+
+    # Validate sex parameter
+    if sex and sex not in ['M', 'F']:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Sex must be 'M' or 'F'"
+        )
+
+    birds = BirdCRUD.search_birds_for_user(
+        db,
+        breeder_id=breeder_id,
+        owner_id=owner_id,
+        band_id_pattern=band_id_pattern,
+        sex=sex,
+        skip=skip,
+        limit=limit
+    )
+
+    return birds
+
+
 @authenticated_router.get("/stats/total", response_model=dict)
 async def get_bird_stats(
     db: Session = Depends(get_db)
@@ -292,16 +357,30 @@ async def update_bird(
 ):
     """
     Update bird information.
+
+    Parent Assignment:
+    - Use father_band_id/mother_band_id to assign parents (auto-creates if parent doesn't exist)
+    - To clear a parent, pass an empty string for father_band_id or mother_band_id
+
+    Auto-Derivation:
+    - If bird_year and bird_number are not provided, they are automatically derived from band_id
+
     Requires authentication.
     """
-    bird = BirdCRUD.update_bird(db, bird_id, bird_data)
-    if not bird:
+    try:
+        # Use the new method that handles band_ids with auto-creation
+        bird = BirdCRUD.update_bird_with_band_ids(db, bird_id, bird_data)
+        if not bird:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Bird not found"
+            )
+        return bird
+    except ValueError as e:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Bird not found"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
         )
-
-    return bird
 
 
 @authenticated_router.delete("/{bird_id}")

@@ -12,7 +12,7 @@ class Pairs(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     season = Column(Integer, nullable=False)
-    round = Column(Integer, nullable=False)
+    clutch = Column(Integer, nullable=False)
     cock = Column(Integer, ForeignKey("bird.id"), nullable=False)
     hen = Column(Integer, ForeignKey("bird.id"), nullable=False)
     date_paired = Column(DateTime, default=func.now(), nullable=False)
@@ -22,11 +22,9 @@ class Pairs(Base):
     incubation_end = Column(DateTime, nullable=True)
     band_date = Column(DateTime, nullable=True)
     number_of_offspring = Column(Integer, nullable=True)
-    created_at = Column(DateTime, default=func.now(), nullable=False)
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
 
-    # Composite unique constraint: cock, hen, season, round
+    # Composite unique constraint: cock, hen, season, clutch
     __table_args__ = (
-        UniqueConstraint('cock', 'hen', 'season', 'round', name='uq_pairs_cock_hen_season_round'),
+        UniqueConstraint('cock', 'hen', 'season', 'clutch', name='uq_pairs_cock_hen_season_clutch'),
     )
 

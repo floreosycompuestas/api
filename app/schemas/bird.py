@@ -23,7 +23,7 @@ class BirdBase(BaseModel):
 
 class BirdCreate(BaseModel):
     """Schema for creating a new bird."""
-    band_id: Optional[str] = Field(None, min_length=1, max_length=100, description="Unique band ID (auto-generated if not provided)")
+    band_id: str = Field(None, min_length=1, max_length=100, description="Unique band ID (auto-generated if not provided)")
     bird_year: Optional[int] = Field(None, description="Bird year for band_id generation (e.g., 2024)")
     bird_number: Optional[int] = Field(None, description="Bird number for band_id generation (e.g., 1)")
     name: Optional[str] = Field(None, max_length=80, description="Bird name")
@@ -37,14 +37,14 @@ class BirdCreate(BaseModel):
 
 class BirdUpdate(BaseModel):
     """Schema for updating a bird."""
-    band_id: Optional[str] = Field(None, min_length=1, max_length=100)
+    band_id: str = Field(None, min_length=1, max_length=100)
     bird_year: Optional[int] = Field(None, description="Bird year")
     bird_number: Optional[int] = Field(None, description="Bird number")
     name: Optional[str] = Field(None, max_length=80)
     dob: Optional[datetime] = None
     sex: Optional[str] = Field(None, pattern="^[MF]?$")
-    father_id: Optional[int] = None
-    mother_id: Optional[int] = None
+    father_band_id: Optional[str] = Field(None, max_length=100, description="Father bird band ID (auto-creates if not found)")
+    mother_band_id: Optional[str] = Field(None, max_length=100, description="Mother bird band ID (auto-creates if not found)")
     breeder_id: Optional[int] = None
     owner_id: Optional[int] = None
 

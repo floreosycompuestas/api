@@ -354,6 +354,135 @@ class BirdCRUD:
             return None
 
     @staticmethod
+    def update_bird_with_band_ids(db: Session, bird_id: int, bird_data: BirdUpdate) -> Optional[Bird]:
+        """
+        Update bird information using father_band_id and mother_band_id.
+        Resolves father_band_id and mother_band_id to their respective bird IDs.
+        If father_band_id doesn't exist, automatically creates a new male bird.
+        If mother_band_id doesn't exist, automatically creates a new female bird.
+
+        Args:
+            db: Database session
+            bird_id: Bird ID to update
+            bird_data: BirdUpdate schema with fields to update
+
+        Returns:
+            Updated Bird object or None if bird not found
+
+        Raises:
+            ValueError: If father_band_id or mother_band_id exists but has wrong sex,
+                       or if the new band_id already exists for another bird
+        """
+        db_bird = db.query(Bird).filter(Bird.id == bird_id).first()
+        if not db_bird:
+            return None
+
+        try:
+            # Get breeder_id from the existing bird to use for parent creation
+            breeder_id = bird_data.breeder_id if bird_data.breeder_id is not None else db_bird.breeder_id
+            owner_id = bird_data.owner_id if bird_data.owner_id is not None else db_bird.owner_id
+
+            # Resolve father_band_id to father_id, create if doesn't exist
+            if bird_data.father_band_id is not None:
+                if bird_data.father_band_id == "":
+                    # Empty string means clear the father
+                    db_bird.father_id = None
+                else:
+                    father = db.query(Bird).filter(Bird.band_id == bird_data.father_band_id).first()
+                    if not father:
+                        # Create new male bird with the father_band_id
+                        father = Bird(
+                            band_id=bird_data.father_band_id,
+                            sex='M',
+                            breeder_id=breeder_id,
+                            owner_id=owner_id
+                        )
+                        db.add(father)
+                        db.flush()  # Flush to get the ID without committing
+                    elif father.sex != 'M':
+                        raise ValueError(
+                            f"Father bird with band ID '{bird_data.father_band_id}' must be male (sex='M'), found sex='{father.sex}'"
+                        )
+                    db_bird.father_id = father.id
+
+            # Resolve mother_band_id to mother_id, create if doesn't exist
+            if bird_data.mother_band_id is not None:
+                if bird_data.mother_band_id == "":
+                    # Empty string means clear the mother
+                    db_bird.mother_id = None
+                else:
+                    mother = db.query(Bird).filter(Bird.band_id == bird_data.mother_band_id).first()
+                    if not mother:
+                        # Create new female bird with the mother_band_id
+                        mother = Bird(
+                            band_id=bird_data.mother_band_id,
+                            sex='F',
+                            breeder_id=breeder_id,
+                            owner_id=owner_id
+                        )
+                        db.add(mother)
+                        db.flush()  # Flush to get the ID without committing
+                    elif mother.sex != 'F':
+                        raise ValueError(
+                            f"Mother bird with band ID '{bird_data.mother_band_id}' must be female (sex='F'), found sex='{mother.sex}'"
+                        )
+                    db_bird.mother_id = mother.id
+
+            # Derive bird_year and bird_number from band_id if they are not provided
+            # Get update data first
+            update_data = bird_data.model_dump(exclude_unset=True, exclude={'father_band_id', 'mother_band_id'})
+
+            # If band_id is being updated, validate it doesn't already exist (unless it's the same bird)
+            if 'band_id' in update_data and update_data['band_id']:
+                new_band_id = update_data['band_id']
+
+                # Only check if the band_id is actually changing
+                if new_band_id != db_bird.band_id:
+                    existing_bird = db.query(Bird).filter(Bird.band_id == new_band_id).first()
+                    if existing_bird:
+                        raise ValueError(f"Band ID '{new_band_id}' already exists for another bird (ID: {existing_bird.id})")
+
+                band_id_to_parse = update_data['band_id']
+
+                # Derive bird_year if not provided
+                if 'bird_year' not in update_data or update_data['bird_year'] is None:
+                    try:
+                        parts = band_id_to_parse.split('-')
+                        if len(parts) >= 2:
+                            bird_year = int(parts[-2])  # Second to last part is the year
+                            update_data['bird_year'] = bird_year
+                    except (ValueError, IndexError):
+                        # If we can't derive it, just skip
+                        pass
+
+                # Derive bird_number if not provided
+                if 'bird_number' not in update_data or update_data['bird_number'] is None:
+                    try:
+                        parts = band_id_to_parse.split('-')
+                        if len(parts) >= 1:
+                            bird_number = int(parts[-1])  # Last part is the bird_number
+                            update_data['bird_number'] = bird_number
+                    except (ValueError, IndexError):
+                        # If we can't derive it, just skip
+                        pass
+
+            # Update other fields if provided
+            for field, value in update_data.items():
+                setattr(db_bird, field, value)
+
+            db_bird.updated_at = datetime.utcnow()
+
+            db.commit()
+            db.refresh(db_bird)
+            return db_bird
+        except IntegrityError as e:
+            db.rollback()
+            raise ValueError(f"Database integrity error: {str(e)}")
+        except Exception as e:
+            db.rollback()
+            raise
+
+    @staticmethod
     def delete_bird(db: Session, bird_id: int) -> bool:
         """
         Delete a bird from the database.
@@ -461,3 +590,69 @@ class BirdCRUD:
             Total number of birds
         """
         return db.query(Bird).filter(Bird.sex == sex).count()
+
+    @staticmethod
+    def search_birds_for_user(
+        db: Session,
+        breeder_id: Optional[int] = None,
+        owner_id: Optional[int] = None,
+        band_id_pattern: Optional[str] = None,
+        sex: Optional[str] = None,
+        skip: int = 0,
+        limit: int = 100
+    ) -> List[Bird]:
+        """
+        Search birds where the user is the breeder or owner,
+        with optional filtering by partial band_id match and sex.
+
+        Args:
+            db: Database session
+            breeder_id: Breeder ID (optional)
+            owner_id: Owner ID (optional)
+            band_id_pattern: Partial band_id for LIKE search (e.g., 'F01-2025-0%')
+            sex: Sex filter ('M' or 'F', optional)
+            skip: Number of records to skip (default: 0)
+            limit: Maximum number of records to return (default: 100)
+
+        Returns:
+            List of Bird objects matching the criteria
+
+        Examples:
+            # Search for male birds with band_id starting with 'F01-2025-0' where user is breeder
+            birds = BirdCRUD.search_birds_for_user(
+                db, breeder_id=1, band_id_pattern='F01-2025-0%', sex='M'
+            )
+
+            # Search for female birds where user is owner or breeder
+            birds = BirdCRUD.search_birds_for_user(
+                db, breeder_id=1, owner_id=2, sex='F'
+            )
+        """
+        query = db.query(Bird)
+
+        # Filter by breeder_id OR owner_id (if at least one is provided)
+        if breeder_id is not None or owner_id is not None:
+            conditions = []
+            if breeder_id is not None:
+                conditions.append(Bird.breeder_id == breeder_id)
+            if owner_id is not None:
+                conditions.append(Bird.owner_id == owner_id)
+
+            # Combine conditions with OR
+            if len(conditions) == 1:
+                query = query.filter(conditions[0])
+            else:
+                from sqlalchemy import or_
+                query = query.filter(or_(*conditions))
+
+        # Filter by partial band_id match (LIKE)
+        if band_id_pattern:
+            query = query.filter(Bird.band_id.like(band_id_pattern))
+
+        # Filter by sex
+        if sex:
+            query = query.filter(Bird.sex == sex)
+
+        # Apply pagination and return results
+        return query.offset(skip).limit(limit).all()
+
